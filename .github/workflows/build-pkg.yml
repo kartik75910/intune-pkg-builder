@@ -1,0 +1,54 @@
+name: Build macOS PKG
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Name for the app (no spaces)'
+        required: true
+      app_url:
+        description: 'Direct download URL for the .zip or .dmg'
+        required: true
+      bundle_id:
+        description: 'Bundle identifier, e.g. org.wireshark.Wireshark'
+        required: true
+      version:
+        description: 'Version number, e.g. 4.6.7'
+        required: true
+
+jobs:
+  build-pkg:
+    runs-on: macos-latest
+    steps:
+      - name: Download the app
+        run: |
+          curl -L "${{ github.event.inputs.app_url }}" -o downloaded_app
+
+      - name: Detect and extract
+        run: |
+          mkdir extracted
+          if file downloaded_app | grep -q Zip; then
+            unzip downloaded_app -d extracted
+          elif file downloaded_app | grep -q "disk image" || [[ "${{ github.event.inputs.app_url }}" == *.dmg ]]; then
+            mv downloaded_app app.dmg
+            hdiutil attach app.dmg -mountpoint /Volumes/appmount -nobrowse
+            cp -R /Volumes/appmount/*.app extracted/
+            hdiutil detach /Volumes/appmount
+          else
+            mv downloaded_app extracted/downloaded.app
+          fi
+
+      - name: Build the .pkg
+        run: |
+          APP_PATH=$(find extracted -maxdepth 2 -name "*.app" | head -n 1)
+          echo "Found app at: $APP_PATH"
+          pkgbuild --component "$APP_PATH" \
+            --install-location /Applications \
+            --identifier "${{ github.event.inputs.bundle_id }}" \
+            --version "${{ github.event.inputs.version }}" \
+            "${{ github.event.inputs.app_name }}.pkg"
+
+      - name: Upload the finished package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.app_name }}-pkg
+          path: "*.pkg"
