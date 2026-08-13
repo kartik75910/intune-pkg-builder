@@ -26,15 +26,19 @@ jobs:
       - name: Detect and extract
         run: |
           mkdir extracted
-          if file downloaded_app | grep -q Zip; then
-            unzip downloaded_app -d extracted
-          elif file downloaded_app | grep -q "disk image" || [[ "${{ github.event.inputs.app_url }}" == *.dmg ]]; then
+          URL="${{ github.event.inputs.app_url }}"
+          if [[ "$URL" == *.dmg* ]]; then
+            echo "Detected DMG"
             mv downloaded_app app.dmg
             hdiutil attach app.dmg -mountpoint /Volumes/appmount -nobrowse
             cp -R /Volumes/appmount/*.app extracted/
             hdiutil detach /Volumes/appmount
+          elif [[ "$URL" == *.zip* ]]; then
+            echo "Detected ZIP"
+            unzip downloaded_app -d extracted
           else
-            mv downloaded_app extracted/downloaded.app
+            echo "Could not determine file type from URL extension"
+            exit 1
           fi
 
       - name: Build the .pkg
